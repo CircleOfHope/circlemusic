@@ -5,11 +5,20 @@ var logger = require('morgan');
 var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 var nunjucks = require('nunjucks');
+var mongoose = require('mongoose');
 
 var routes = require('./routes/index');
 var users = require('./routes/users');
 
 var app = express();
+
+mongoose.connect('mongodb://localhost/circlemusic');
+mongoose.connection.on('connected', function() {
+  console.log('connected to mongo!');
+});
+mongoose.connection.on('error', function(err) {
+  console.log('error encountered: ' + err);
+});
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
