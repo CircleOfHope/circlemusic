@@ -1,3 +1,4 @@
+require('dotenv').config();
 var express = require('express');
 var path = require('path');
 var favicon = require('serve-favicon');
@@ -11,7 +12,7 @@ var songRouter = require('./routes/songs');
 
 var app = express();
 
-mongoose.connect('mongodb://localhost/circlemusic');
+mongoose.connect(process.env.MONGODB_URI);
 mongoose.connection.on('connected', function() {
   console.log('connected to mongo!');
 });
