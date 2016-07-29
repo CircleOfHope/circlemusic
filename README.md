@@ -4,9 +4,11 @@ This repository is for the official rewrite of the [Circle of Hope Music Table](
 
 ## Introduction
 
+This applicaion serves as a hub of all things music at [Circle of Hope](http://circleofhope.net). It's primary purpose is to catalog the songs we sing in our [congregations](http://www.circleofhope.net/meetings/) and [cells](http://www.circleofhope.net/what-are-cells/).
+
 ### Why a rewrite?
 
-The Music Table has served us well for the last 5 years. It was a fantastic upgrade from the Google Spreadsheet we were using to maintain our music catalog. Even so, there are still many leaders who opt not to use it, in addition to the feedback and feature requests we've gotten for improvement.
+The [Music Table](http://music.circleofhope.net) has served us well for the last 5 years. It was a fantastic upgrade from the Google Spreadsheet we were using to maintain our music catalog. Even so, there are still many leaders who opt not to use it, in addition to the feedback and feature requests we've gotten for improvement.
 
 The original application was written in a somewhat outdated framework. This makes adding new features and making improvements a bit more sluggish and difficult. By rewriting the code base, we are hoping to make iterative improvements easier, bigger feature requests more viable, and contribution more open.
 
