@@ -41,3 +41,9 @@ From the project folder, simply `npm start`.
 ### Importing old data
 
 If you have a copy of the legacy database accessible, you can import the data into MongoDB using the `bin/import` script. Type `bin/import --help` to see required options.
+
+## Contributing
+
+Contributions are welcome. We try to follow Thoughtbot's [Git Protocol](https://github.com/thoughtbot/guides/tree/master/protocol/git).
+
+We are also discussing our progress in the Circle of Hope [Slack](circleofhope.slack.com) channel. If you need an invite for our team, create an issue in this repo and we'll get you one.
