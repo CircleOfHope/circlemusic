@@ -1,0 +1,216 @@
+#!/usr/bin/env node
+var mysql 		= require('mysql');
+var readline 	= require('readline');
+var mongoose 	= require('mongoose');
+var async 		= require('async');
+var _					= require('lodash');
+var argv 			= require('minimist')(process.argv.slice(2));
+require('dotenv').config();
+
+
+if (argv.hasOwnProperty('help')) {
+	console.log('Import legacy data from mysql to mongo.');
+	console.log('Required flags: --database --user --pass');
+	console.log('Optional flags: --host=localhost');
+	return;
+}
+
+// make sure we have the arguments we need
+if (!argv.hasOwnProperty('database')) {
+	console.error('Please pass in the database name with --database');
+	return;
+}
+if (!argv.hasOwnProperty('user')) {
+	console.error('Please pass in the mysql user name with --user');
+	return;
+}
+if (!argv.hasOwnProperty('pass')) {
+	console.error('Please pass in the mysql password with --pass');
+	return;
+}
+
+// create the stdin interface
+rl = readline.createInterface({
+	input: process.stdin,
+	output: process.stdout
+});
+
+// warn for import
+rl.question('Ready to clear your Songs and Tags collections in your mongo db? (y/n): ', function(answer){
+
+	// don't need to read anything else
+	rl.close();
+
+	// if no
+	if (answer.toLowerCase().charAt(0) == 'n') {
+		return;
+	}
+
+	// get mysql database name (change to use config?)
+	var dbName = process.argv[2];
+	console.log('Importing ' + dbName);
+
+	// Create connection to mysql db
+	var legacy = mysql.createConnection({
+	  host     : argv.host || 'localhost',
+	  user     : argv.user,
+	  password : argv.pass,
+	  database : argv.database
+	});
+	legacy.connect();
+
+	// Create connection to mongo db
+	mongoose.connect(process.env.MONGODB_URI);
+
+	// get Songs model
+	var Song = require('../models/songs');
+
+	// clear out collection
+	return Song.remove({}, function(){
+		console.log('Songs collection has been emptied');
+
+		// query for song data from mysql
+		// no promises support :(
+		legacy.query("SELECT id as legacyId, \
+									CONVERT(IsActive, UNSIGNED) as active, \
+									Title as title, \
+									Artist as author, \
+									Scripture as scripture, \
+									LyricsExcerpt as lyrics, \
+									Notes as notes, \
+									Quarantined as quarantined \
+									FROM songs", 
+									function(err, songs){
+
+			// this is a control flow to allow for async things to happen in series
+			// first we loop over the songs and add tags and links to each songs from the 
+			// legacy db (done in the async.eachSeries) then we will bulk insert the songs
+			// into our mongo collection. Last we will clear out and import tags.
+			async.waterfall([
+				/* BEGIN FIRST WATERFALL METHOD */
+				function(callback) {
+					//loop over rows and get tags and attachments
+					async.eachSeries(songs, 
+						// this method is called on each row
+						function(song, cb){
+							// get tags
+							legacy.query("SELECT t.name as tag, tt.name as tagGroup \
+														FROM tags t \
+														JOIN songs_tags st \
+															ON st.tag_id = t.id \
+														LEFT JOIN tags_tagtypes tty \
+															ON tty.tag_id = t.id \
+														LEFT JOIN tagtypes tt \
+															ON tty.tagtype_id = tt.id \
+														WHERE st.song_id = ?", 
+														[song.legacyId], 
+														function(err, tags){
+								// transform normalized tags into our tagGroup schema
+								var tagGroups = _.map(_.groupBy(tags, 'tagGroup'), function(val, key){
+									// _.map allows us to transform the results of each grouping
+									return { 
+										// grouping put groupless tags in the "undefined" group
+										name: (key == "undefined") ? undefined : key,
+										// pluck all of the tag values out of the objects in the group
+										tags: _.map(val, 'tag')
+									}
+								});
+
+								// assign tagGroups array to song
+								song.tagGroups = tagGroups;
+								
+								// get attachments
+								legacy.query("SELECT Name as name, Url as url \
+															FROM attachments a \
+															JOIN attachments_songs ats \
+																ON ats.attachment_id = a.id \
+															WHERE ats.song_id = ?", 
+															[song.legacyId],
+															function(err, attachments){
+									// add attachments as is to song, array of objects is what we want
+									song.links = attachments;
+									return cb();
+
+								});
+							});
+						},
+						// this method is called when all rows have been looped over
+						function() {
+							// move on to the next method in async.waterfall
+							return callback(null);
+						}
+					);
+				},
+				/* BEGIN SECOND WATERFALL METHOD */
+				function(callback) {
+					// insert songs to mongo db collection
+					console.log('Importing ' + songs.length + ' songs');
+					Song.create(songs, function(err, mongoSongs){
+						if (err) {
+							console.log('There was an error inserting songs into the mongo collection');
+							return callback(err);
+						}
+
+						console.log(mongoSongs.length + ' songs have been imported');
+						// all done with waterfall
+						return callback(null);
+					});
+				},
+				/* BEGIN THIRD WATERFALL METHOD */
+				function(callback) {
+					// import tags
+					var TagGroup = require('../models/tagGroup');
+
+					TagGroup.remove({}, function(){
+						console.log('TagGroup collection has been emptied');
+						legacy.query("SELECT t.name as tag, tt.name as tagGroup \
+													FROM tags t \
+													LEFT JOIN tags_tagtypes tty \
+														ON tty.tag_id = t.id \
+													LEFT JOIN tagtypes tt \
+														ON tty.tagtype_id = tt.id",
+														function(err, tags){
+							// transform normalized tags into our tagGroup schema
+							var tagGroups = _.map(_.groupBy(tags, 'tagGroup'), function(val, key){
+								// _.map allows us to transform the results of each grouping
+								return { 
+									// grouping put groupless tags in the "undefined" group
+									name: (key == "null") ? undefined : key,
+									// pluck all of the tag values out of the objects in the group
+									tags: _.map(val, 'tag')
+								}
+							});
+
+							// bulk insert of denormalized tag groups
+							TagGroup.create(tagGroups, function(err, mongoTagGroups){
+								if (err) {
+									console.log('There was an error inserting tagGroups into the mongo collection');
+									return callback(err);
+								}
+
+								console.log(mongoTagGroups.length + ' tagGroups have been imported');
+
+								return callback(null);
+							});
+						});
+
+					});
+				}
+	
+			], function(err){
+				// close up shop
+				if (err){ console.log(err); }
+				legacy.end();
+				mongoose.connection.close();
+				return;
+			});
+
+		});
+
+	});
+});
+
+
+
+
+
