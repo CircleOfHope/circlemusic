@@ -28,3 +28,5 @@ jspm_packages
 # Environment
 /*.env
 
+# We don't commit CSS, only SASS
+public/css/*.css
