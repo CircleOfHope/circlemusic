@@ -6,6 +6,8 @@ var logger = require('morgan');
 var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 var nunjucks = require('nunjucks');
+var sassMiddleware = require('node-sass-middleware');
+var autoprefixer = require('express-autoprefixer');
 var mongoose = require('mongoose');
 
 var songRouter = require('./routes/songs');
@@ -33,8 +35,28 @@ app.use(logger('dev'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cookieParser());
+
+// when a request comes in for anything at /css, we look for
+// a equivalent SASS file with the same name, and compile it
+// if a) it's the first time requested since server boot or
+// b) it has been modified since last time .css file was made
+app.use('/css', sassMiddleware({
+  src: path.join(__dirname, 'public','css'),
+  response: false,
+  includePaths: [
+    path.join(__dirname, 'node_modules')
+  ]
+}));
+// similar to above, this will run autoprefixer on any css files
+// when requested except it will do it every time.
+app.use('/css', autoprefixer({browsers: 'last 2 versions'}));
+// when a request comes in for anything at /js, first check for
+// the static file in the bootstrap js distro
+app.use('/js', express.static(path.join(__dirname, 'node_modules/bootstrap-sass/assets/javascripts')));
+// any other request for a static file should look in the public folder
 app.use(express.static(path.join(__dirname, 'public')));
 
+// not requesting a static file at this point, use the router
 app.use('/songs', songRouter);
 
 // catch 404 and forward to error handler
